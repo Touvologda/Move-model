@@ -1,11 +1,6 @@
 import copy
 import inspect
-#import warnings
-import streamlit as st
-from streamlit import session_state as ss
-import sys
-sys.path.append(ss['path_move'] + 'animatex/')
-
+import warnings
 
 
 def build_from_config(cfg, registry, **kwargs):
@@ -26,45 +21,51 @@ def build_from_config(cfg, registry, **kwargs):
         Exception:
     """
 
+
     if not isinstance(cfg, dict):
-        raise st.write(f"config must be type dict, got {type(cfg)}")
+        raise TypeError(f"config must be type dict, got {type(cfg)}")
     if "type" not in cfg:
-        raise st.write(f"config must contain key type, got {cfg}")
+        raise KeyError(f"config must contain key type, got {cfg}")
     if not isinstance(registry, Registry):
-        raise st.write(f"registry must be type Registry, got {type(registry)}")
+        raise TypeError(f"registry must be type Registry, got {type(registry)}")
 
     cfg = copy.deepcopy(cfg)
+
     req_type = cfg.pop("type")
     req_type_entry = req_type
     if isinstance(req_type, str):
         req_type_entry = registry.get(req_type)
         if req_type_entry is None:
-            
             try:
+                print(f"For Windows users, we explicitly import registry function {req_type} !!!")
                 from animatex.diffusion.diffusion_ddim import DiffusionDDIM
                 from animatex.diffusion.diffusion_ddim import DiffusionDDIMLong
+
                 from animatex.model.autoencoder import AutoencoderKL
                 from animatex.model.clip_embedder import FrozenOpenCLIPTextVisualEmbedder
                 from animatex.model.unet_animate_x import UNetSD_Animate_X
+                
                 from animatex.inference_animate_x_entrance import inference_animate_x_entrance
+
                 req_type_entry = eval(req_type)
             except:
-                raise st.write(f"{req_type} not found in {registry.name} registry")
+                raise KeyError(f"{req_type} not found in {registry.name} registry")
 
     if kwargs is not None:
         cfg.update(kwargs)
+    
     if inspect.isclass(req_type_entry):
         try:
             return req_type_entry(**cfg)
         except Exception as e:
-            raise st.write(f"Failed to init class {req_type_entry}, with {e}")
+            raise Exception(f"Failed to init class {req_type_entry}, with {e}")
     elif inspect.isfunction(req_type_entry):
         try:
             return req_type_entry(**cfg)
         except Exception as e:
-            raise st.write(f"Failed to invoke function {req_type_entry}, with {e}")
+            raise Exception(f"Failed to invoke function {req_type_entry}, with {e}")
     else:
-        raise st.write(f"type must be str or class, got {type(req_type_entry)}")
+        raise TypeError(f"type must be str or class, got {type(req_type_entry)}")
 
 
 class Registry(object):
@@ -105,12 +106,12 @@ class Registry(object):
     def register_class(self, name=None):
         def _register(cls):
             if not inspect.isclass(cls):
-                raise st.write(f"Module must be type class, got {type(cls)}")
+                raise TypeError(f"Module must be type class, got {type(cls)}")
             if "class" not in self.allow_types:
-                raise st.write(f"Register {self.name} only allows type {self.allow_types}, got class")
+                raise TypeError(f"Register {self.name} only allows type {self.allow_types}, got class")
             module_name = name or cls.__name__
             if module_name in self.class_map:
-               st.write(f"Class {module_name} already registered by {self.class_map[module_name]}, "
+                warnings.warn(f"Class {module_name} already registered by {self.class_map[module_name]}, "
                               f"will be replaced by {cls}")
             self.class_map[module_name] = cls
             return cls
@@ -120,15 +121,16 @@ class Registry(object):
     def register_function(self, name=None):
         def _register(func):
             if not inspect.isfunction(func):
-                raise st.write(f"Registry must be type function, got {type(func)}")
+                raise TypeError(f"Registry must be type function, got {type(func)}")
             if "function" not in self.allow_types:
-                raise st.write(f"Registry {self.name} only allows type {self.allow_types}, got function")
+                raise TypeError(f"Registry {self.name} only allows type {self.allow_types}, got function")
             func_name = name or func.__name__
             if func_name in self.class_map:
-                st.write(f"Function {func_name} already registered by {self.func_map[func_name]}, "
+                warnings.warn(f"Function {func_name} already registered by {self.func_map[func_name]}, "
                               f"will be replaced by {func}")
             self.func_map[func_name] = func
             return func
+
         return _register
 
     def _list(self):

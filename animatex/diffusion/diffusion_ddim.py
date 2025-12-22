@@ -419,8 +419,7 @@ class DiffusionDDIMLong(object):
                  rescale_timesteps=False,
                  noise_strength=0.0, 
                  **kwargs):
-        import streamlit as st
-        st.write('DiffusionDDIMLong')
+
         assert mean_type in ['x0', 'x_{t-1}', 'eps', 'v']
         assert var_type in ['learned', 'learned_range', 'fixed_large', 'fixed_small']
         assert loss_type in ['mse', 'rescaled_mse', 'kl', 'rescaled_kl', 'l1', 'rescaled_l1','charbonnier']

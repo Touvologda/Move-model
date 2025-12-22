@@ -2,9 +2,7 @@ import os
 import re
 import os.path as osp
 import sys
-#sys.path.insert(0, '/'.join(osp.realpath(__file__).split('/')[:-4]))
-import streamlit as st
-from streamlit import session_state as ss
+sys.path.insert(0, '/'.join(osp.realpath(__file__).split('/')[:-4]))
 import json
 import math
 import torch
@@ -40,7 +38,6 @@ import cv2, pickle
 
 @INFER_ENGINE.register_function()
 def inference_animate_x_entrance(cfg_update,  **kwargs):
-    
     for k, v in cfg_update.items():
         if isinstance(v, dict) and k in cfg:
             cfg[k].update(v)
@@ -61,14 +58,13 @@ def inference_animate_x_entrance(cfg_update,  **kwargs):
         cfg.world_size = cfg.pmi_world_size * cfg.gpus_per_machine
     
     if cfg.world_size == 1:
-        #запускаем обработку для оживления картинки
         worker(0, cfg, cfg_update)
     else:
-        st.write(22)
         mp.spawn(worker, nprocs=cfg.gpus_per_machine, args=(cfg, cfg_update))
     return cfg
 
 def process_single_pose_embedding(dwpose_source_data):
+
 
     bodies = dwpose_source_data['bodies']['candidate'][:18]
 
@@ -83,6 +79,8 @@ def make_masked_images(imgs, masks):
     return torch.stack(masked_imgs, dim=0)
 
 def process_single_pose_embedding_katong(dwpose_source_data, index):
+
+
     bodies = dwpose_source_data['bodies'][index][:18]
 
 
@@ -92,10 +90,10 @@ def process_single_pose_embedding_katong(dwpose_source_data, index):
     return results
 
 def load_video_frames(ref_image_path, pose_file_path, original_driven_video_path, pose_embedding_key, train_trans, vit_transforms, train_trans_pose, max_frames=32, frame_interval = 1, resolution=[512, 768], get_first_frame=True, vit_resolution=[224, 224]):
-    st.write('testqq')
+
     pose_embedding_dim = 18
 
-    st.write('11')
+    
     for _ in range(5):
         # try:
             dwpose_all = {}
@@ -107,32 +105,24 @@ def load_video_frames(ref_image_path, pose_file_path, original_driven_video_path
             
 
             
-            st.write(pose_embedding_key)
-            st.write('pose_embedding_key')
-            # пер
+
+            # 打开文件（以二进制读取模式）
             with open(pose_embedding_key, 'rb') as file:
-                st.write('22')
                 # 使用 pickle.load() 方法读取字典
                 loaded_data = pickle.load(file)
-                st.write('1')
 
             try:
-                st.write('33') 
                 ref_pose_embedding_key = pose_embedding_key.replace(".pkl", "_ref_pose.pkl")
                 with open(ref_pose_embedding_key, 'rb') as file:
                     # 使用 pickle.load() 方法读取字典
                     ref_loaded_data = pickle.load(file)
                     ref_pose_embedding = process_single_pose_embedding(ref_loaded_data)
-                st.write('2')
 
             except:
-                st.write('3')
                 ref_pose_embedding = process_single_pose_embedding_katong(loaded_data, 0)
 
+
             first_image = True
-            st.write(pose_file_path)
-            st.write(ref_image_path)
-            st.write('4')
             for ii_index in sorted(os.listdir(pose_file_path)):
                 # ii_index = ii_index.strip()
 
@@ -286,7 +276,6 @@ def load_video_frames(ref_image_path, pose_file_path, original_driven_video_path
 
 
 def worker(gpu, cfg, cfg_update):
-
     '''
     Inference worker for each gpu
     '''
@@ -300,16 +289,14 @@ def worker(gpu, cfg, cfg_update):
     cfg.seed = int(cfg.seed)
     cfg.rank = cfg.pmi_rank * cfg.gpus_per_machine + gpu
     setup_seed(cfg.seed + cfg.rank)
-    torch.cuda.empty_cache()
+
     if not cfg.debug:
         torch.cuda.set_device(gpu)
         torch.backends.cudnn.benchmark = True
         if hasattr(cfg, "CPU_CLIP_VAE") and cfg.CPU_CLIP_VAE:
             torch.backends.cudnn.benchmark = False
-        try:
-            dist.init_process_group(backend='gloo', world_size=cfg.world_size, rank=cfg.rank)
-        except:
-            pass
+        if not dist.is_initialized():
+            dist.init_process_group(backend='nccl', world_size=cfg.world_size, rank=cfg.rank)
 
     # [Log] Save logging and make log dir
     log_dir = generalized_all_gather(cfg.log_dir)[0]
@@ -329,9 +316,8 @@ def worker(gpu, cfg, cfg_update):
             logging.StreamHandler(stream=sys.stdout)])
     logging.info(cfg)
     logging.info(f"Running Animate-X inference on gpu {gpu}")
-
+    
     # [Diffusion]
-    st.write('diffusion')
     diffusion = DIFFUSION.build(cfg.Diffusion)
 
     # [Data] Data Transform    
@@ -346,36 +332,33 @@ def worker(gpu, cfg, cfg_update):
         data.ToTensor(),
         ]
         )
+
     vit_transforms = T.Compose([
                 data.Resize(cfg.vit_resolution),
                 T.ToTensor(),
                 T.Normalize(mean=cfg.vit_mean, std=cfg.vit_std)])
+
     # [Model] embedder
-    st.write('clip_encoder')
     clip_encoder = EMBEDDER.build(cfg.embedder)
-    #clip_encoder.model.to(gpu)
-    clip_encoder.model.to(torch.device('cpu'))
-    st.write('clip_encoder_1')
+    clip_encoder.model.to(gpu)
     with torch.no_grad():
         _, _, zero_y = clip_encoder(text="")
     
+
     # [Model] auotoencoder 
-    st.write('autoencoder')
     autoencoder = AUTO_ENCODER.build(cfg.auto_encoder)
     autoencoder.eval() # freeze
-    st.write('autoencoder_1')
     for param in autoencoder.parameters():
         param.requires_grad = False
-    #autoencoder.cuda()
-    autoencoder.cpu()
-
-    st.write('UNet')
+    autoencoder.cuda()
+    
     # [Model] UNet 
     if "config" in cfg.UNet:
         cfg.UNet["config"] = cfg
     cfg.UNet["zero_y"] = zero_y
     model = MODEL.build(cfg.UNet)
-    state_dict = torch.load(cfg.test_model, map_location='cpu')
+    # state_dict = torch.load(cfg.test_model, map_location='cpu')
+    state_dict = torch.load(cfg.test_model, map_location=f"cuda:{gpu}")
     if 'state_dict' in state_dict:
         state_dict = state_dict['state_dict']
     if 'step' in state_dict:
@@ -391,19 +374,16 @@ def worker(gpu, cfg, cfg_update):
                 del state_dict[key]
         status = model.load_state_dict(state_dict, strict=False)
     logging.info('Load model from {} with status {}'.format(cfg.test_model, status))
-   
-    st.write('to(gpu)')
-    #model = model.to(gpu) #torch.device('cpu'))
-    model = model.to(torch.device('cpu'))
+    del state_dict
+    torch.cuda.empty_cache()
+    model = model.to(gpu)
     model.eval()
-    
-    st.write('CPU_CLIP_VAE')
     if hasattr(cfg, "CPU_CLIP_VAE") and cfg.CPU_CLIP_VAE:
         model.to(torch.float16) 
     else:
         model = DistributedDataParallel(model, device_ids=[gpu]) if not cfg.debug else model
-    
-    st.write('load models')
+    torch.cuda.empty_cache()
+
 
     
     test_list = cfg.test_list_path
@@ -420,8 +400,7 @@ def worker(gpu, cfg, cfg_update):
     
     for idx, file_path in enumerate(test_list):
         cfg.frame_interval, ref_image_key, pose_seq_key, original_driven_video_seq_key, pose_embedding_key = file_path[0], file_path[1], file_path[2], file_path[3], file_path[4]
-        st.write('55')
-        #return
+        
         try:
             current_seed = file_path[5]
         except:
@@ -431,34 +410,25 @@ def worker(gpu, cfg, cfg_update):
 
         logging.info(f"[{idx}]/[{len(test_list)}] Begin to sample {ref_image_key}, pose sequence from {pose_seq_key} init seed {manual_seed} ...")
         
+
         vit_frame, video_data, misc_data, dwpose_data, random_ref_frame_data, random_ref_dwpose_data, pose_embedding, ref_pose_embedding, original_driven_video_data = load_video_frames(ref_image_key, pose_seq_key, original_driven_video_seq_key, pose_embedding_key, train_trans, vit_transforms, train_trans_pose, max_frames=cfg.max_frames, frame_interval =cfg.frame_interval, resolution=cfg.resolution)
         
-        st.write('error')
+        
 
         original_driven_video_data = torch.cat([vit_frame.unsqueeze(0), original_driven_video_data], 0)
-        #torch.device('cpu')
-        misc_data = misc_data.unsqueeze(0).to(torch.device('cpu'))
-        vit_frame = vit_frame.unsqueeze(0).to(torch.device('cpu'))
-        dwpose_data = dwpose_data.unsqueeze(0).to(torch.device('cpu'))
-        original_driven_video_data = original_driven_video_data.unsqueeze(0).to(torch.device('cpu'))
-        random_ref_frame_data = random_ref_frame_data.unsqueeze(0).to(torch.device('cpu'))
-        random_ref_dwpose_data = random_ref_dwpose_data.unsqueeze(0).to(torch.device('cpu'))
 
-        pose_embedding = pose_embedding.unsqueeze(0).to(torch.device('cpu'))
-        ref_pose_embedding = ref_pose_embedding[0:1].unsqueeze(0).to(torch.device('cpu'))
-        
-        #misc_data = misc_data.unsqueeze(0).to(gpu)
-        #vit_frame = vit_frame.unsqueeze(0).to(gpu)
-        #dwpose_data = dwpose_data.unsqueeze(0).to(gpu)
-        #original_driven_video_data = original_driven_video_data.unsqueeze(0).to(gpu)
-        #random_ref_frame_data = random_ref_frame_data.unsqueeze(0).to(gpu)
-        #random_ref_dwpose_data = random_ref_dwpose_data.unsqueeze(0).to(gpu)
+        misc_data = misc_data.unsqueeze(0).to(gpu)
+        vit_frame = vit_frame.unsqueeze(0).to(gpu)
+        dwpose_data = dwpose_data.unsqueeze(0).to(gpu)
+        original_driven_video_data = original_driven_video_data.unsqueeze(0).to(gpu)
+        random_ref_frame_data = random_ref_frame_data.unsqueeze(0).to(gpu)
+        random_ref_dwpose_data = random_ref_dwpose_data.unsqueeze(0).to(gpu)
 
-        #pose_embedding = pose_embedding.unsqueeze(0).to(gpu)
-        #ref_pose_embedding = ref_pose_embedding[0:1].unsqueeze(0).to(gpu)
+        pose_embedding = pose_embedding.unsqueeze(0).to(gpu)
+        ref_pose_embedding = ref_pose_embedding[0:1].unsqueeze(0).to(gpu)
 
         pose_embedding = torch.cat([ref_pose_embedding, pose_embedding], dim = 1)
-    
+
         # print("pose_embedding.shape: ", pose_embedding.shape)
 
         ### save for visualization
@@ -466,8 +436,7 @@ def worker(gpu, cfg, cfg_update):
         frames_num = misc_data.shape[1]
         misc_backups = rearrange(misc_backups, 'b f c h w -> b c f h w')
         mv_data_video = []
-        st.write(cfg.video_compositions)
-        st.write('pupu')
+        
 
         ### local image (first frame)
         image_local = []
@@ -477,7 +446,7 @@ def worker(gpu, cfg, cfg_update):
             image_local = misc_data[:,:1].clone().repeat(1,frames_num,1,1,1)
             image_local_clone = rearrange(image_local, 'b f c h w -> b c f h w', b = bs_vd_local)
             image_local = rearrange(image_local, 'b f c h w -> b c f h w', b = bs_vd_local)
-            st.write('one')
+
             # no
             if hasattr(cfg, "latent_local_image") and cfg.latent_local_image:
                 with torch.no_grad():
@@ -488,13 +457,13 @@ def worker(gpu, cfg, cfg_update):
                     image_local = local_image_data.unsqueeze(1).repeat(1,temporal_length,1,1,1) # [10, 16, 4, 64, 40]
                     # print("image_local.shape", image_local.shape) #
 
-        st.write('two')
+        
         ### encode the video_data
         bs_vd = misc_data.shape[0]
         misc_data = rearrange(misc_data, 'b f c h w -> (b f) c h w')
         misc_data_list = torch.chunk(misc_data, misc_data.shape[0]//cfg.chunk_size,dim=0)
         
-        st.write('three')
+
         with torch.no_grad():
             
             random_ref_frame = []
@@ -509,7 +478,7 @@ def worker(gpu, cfg, cfg_update):
                     # print("random_ref_frame_data.shape", random_ref_frame_data.shape) #
                 random_ref_frame = rearrange(random_ref_frame_data, 'b f c h w -> b c f h w')
 
-            st.write('four')
+
             if 'dwpose' in cfg.video_compositions:
                 bs_vd_local = dwpose_data.shape[0]
                 dwpose_data_clone = rearrange(dwpose_data.clone(), 'b f c h w -> b c f h w', b = bs_vd_local)
@@ -517,22 +486,22 @@ def worker(gpu, cfg, cfg_update):
                     dwpose_data = torch.cat([random_ref_dwpose_data[:,:1], dwpose_data], dim=1)
                 dwpose_data = rearrange(dwpose_data, 'b f c h w -> b c f h w', b = bs_vd_local)
                 # print("dwpose_data = rearrange(dwpose_dat.shape", dwpose_data.shape) #
-            st.write('five')
+            
             y_visual = []
             if 'image' in cfg.video_compositions:
                 with torch.no_grad():
                     vit_frame = vit_frame.squeeze(1)
                     y_visual = clip_encoder.encode_image(vit_frame).unsqueeze(1) # [60, 1024]
                     y_visual0 = y_visual.clone()
-            st.write('six')
+
             batch_size, seq_len = original_driven_video_data.shape[0], original_driven_video_data.shape[1]
-            st.write('seven')
+
             original_driven_video_data = original_driven_video_data.reshape(batch_size*seq_len,3,224,224)
             original_driven_video_data_embedding = clip_encoder.encode_image(original_driven_video_data).unsqueeze(1) # [60, 1024]
-            st.write('eqight')
+            
             # print("original_driven_video_data_embedding.shape: ", original_driven_video_data_embedding.shape)
             original_driven_video_data_embedding = original_driven_video_data_embedding.clone()
-        st.write('12')
+
         with amp.autocast(enabled=True):
             pynvml.nvmlInit()
             handle=pynvml.nvmlDeviceGetHandleByIndex(0)
@@ -541,15 +510,14 @@ def worker(gpu, cfg, cfg_update):
             logging.info(f"Current seed {cur_seed} ...")
 
             noise = torch.randn([1, 4, cfg.max_frames, int(cfg.resolution[1]/cfg.scale), int(cfg.resolution[0]/cfg.scale)])
-            #noise = noise.to(gpu)
-            noise = noise.to(torch.device('cpu'))
-            st.write('13')
+            noise = noise.to(gpu)
+
             if hasattr(cfg.Diffusion, "noise_strength"):
                 b, c, f, _, _= noise.shape
                 offset_noise = torch.randn(b, c, f, 1, 1, device=noise.device)
                 noise = noise + cfg.Diffusion.noise_strength * offset_noise
 
-            st.write('14')
+
             full_model_kwargs=[{
                                         'y': None,
                                         'pose_embeddings': [pose_embedding, original_driven_video_data_embedding],
@@ -566,7 +534,7 @@ def worker(gpu, cfg, cfg_update):
                                         'dwpose': None, 
                                         "pose_embeddings": None, 
                                        }]
-            st.write('15')
+
             # for visualization
             full_model_kwargs_vis =[{
                                         'y': None,
@@ -585,33 +553,39 @@ def worker(gpu, cfg, cfg_update):
                                         "pose_embeddings": None, 
                                        }]
 
-            st.write('16')
+            
             partial_keys = [
                     ['image', 'randomref', "dwpose","pose_embeddings"],
                 ]
             if hasattr(cfg, "partial_keys") and cfg.partial_keys:
                 partial_keys = cfg.partial_keys
-            st.write(partial_keys)
-            st.write('17')
+
             for partial_keys_one in partial_keys:
-                st.write('f1')
                 model_kwargs_one = prepare_model_kwargs(partial_keys = partial_keys_one,
                                     full_model_kwargs = full_model_kwargs,
                                     use_fps_condition = cfg.use_fps_condition)
 
 
-                st.write('f2')
+
+
                 model_kwargs_one_vis = prepare_model_kwargs(partial_keys = partial_keys_one,
                                     full_model_kwargs = full_model_kwargs_vis,
                                     use_fps_condition = cfg.use_fps_condition)
                 noise_one = noise
-                st.write('f3')
+                
+                # if hasattr(cfg, "CPU_CLIP_VAE") and cfg.CPU_CLIP_VAE:
+                #     clip_encoder.cpu() # add this line
+                #     autoencoder.cpu() # add this line
+                #     torch.cuda.empty_cache() # add this line
+
                 if hasattr(cfg, "CPU_CLIP_VAE") and cfg.CPU_CLIP_VAE:
                     clip_encoder.cpu() # add this line
+                    del clip_encoder  # Delete this object to free memory
                     autoencoder.cpu() # add this line
                     torch.cuda.empty_cache() # add this line
-                #st.write(model)    
-                st.write('f4')    
+                    import gc
+                    gc.collect()
+                    
                 video_data = diffusion.ddim_sample_loop(
                     noise=noise_one,
                     model=model.eval(), 
@@ -621,23 +595,32 @@ def worker(gpu, cfg, cfg_update):
                     eta=0.0)
                 
                 # print("video_data = diffusion.ddim_sample_", video_data.shape) #torch.Size([1, 4, 32, 96, 64])
-                st.write('f5')
+
+                # if hasattr(cfg, "CPU_CLIP_VAE") and cfg.CPU_CLIP_VAE:
+                #     # if run forward of  autoencoder or clip_encoder second times, load them again
+                #     clip_encoder.cuda()
+                #     autoencoder.cuda()
+
                 if hasattr(cfg, "CPU_CLIP_VAE") and cfg.CPU_CLIP_VAE:
                     # if run forward of  autoencoder or clip_encoder second times, load them again
-                    clip_encoder.cuda()
+                    # clip_encoder.cuda()
+                    del diffusion
+                    torch.cuda.empty_cache()
+                    gc.collect()
                     autoencoder.cuda()
+
+                
                 video_data = 1. / cfg.scale_factor * video_data 
                 video_data = rearrange(video_data, 'b c f h w -> (b f) c h w')
                 chunk_size = min(cfg.decoder_bs, video_data.shape[0])
                 video_data_list = torch.chunk(video_data, video_data.shape[0]//chunk_size, dim=0)
                 decode_data = []
-                st.write('f6')
                 for vd_data in video_data_list:
                     gen_frames = autoencoder.decode(vd_data)
                     decode_data.append(gen_frames)
                 video_data = torch.cat(decode_data, dim=0)
                 video_data = rearrange(video_data, '(b f) c h w -> b c f h w', b = cfg.batch_size).float()
-                st.write('f7')
+                
                 text_size = cfg.resolution[-1]
                 cap_name = re.sub(r'[^\w\s]', '', ref_image_key.split("/")[-1].split('.')[0]) # .replace(' ', '_')
                 pose_name = re.sub(r'[^\w\s]', '', pose_seq_key.split("/")[-1].split('.')[0])  
@@ -645,8 +628,6 @@ def worker(gpu, cfg, cfg_update):
                 file_name = f'{cap_name}_{pose_name}_{name}_rank_{cfg.world_size:02d}_{cfg.rank:02d}_{idx:02d}_{cfg.resolution[1]}x{cfg.resolution[0]}.mp4'
                 local_path = os.path.join(cfg.log_dir, f'{file_name}')
                 local_path_1col = os.path.join(cfg.log_dir, f'{file_name[:-4]}_results_1col.mp4')
-                st.write(local_path)
-                st.write('f8')
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
                 captions = "human"
                 del model_kwargs_one_vis[0][list(model_kwargs_one_vis[0].keys())[0]]
@@ -656,7 +637,7 @@ def worker(gpu, cfg, cfg_update):
                 del model_kwargs_one_vis[1]["pose_embeddings"]
 
                 
-                st.write('f9')
+
                 save_video_multiple_conditions_not_gif_horizontal_3col(local_path, video_data.cpu(), model_kwargs_one_vis, misc_backups, 
                                                 cfg.mean, cfg.std, nrow=1, save_fps=cfg.save_fps)
 
@@ -664,17 +645,15 @@ def worker(gpu, cfg, cfg_update):
                                                 cfg.mean, cfg.std, nrow=1, save_fps=cfg.save_fps)      
                 logging.info(f'video saved in {local_path}!')
 
-    st.write('tuktuk')
+    
     logging.info('Congratulations! The inference is completed!')
     # synchronize to finish some processes
     if not cfg.debug:
         torch.cuda.synchronize()
         dist.barrier()
-    st.write('tuktuk2')
 
 def prepare_model_kwargs(partial_keys, full_model_kwargs, use_fps_condition=False):
-
-
+    
     if use_fps_condition is True:
         partial_keys.append('fps')
 

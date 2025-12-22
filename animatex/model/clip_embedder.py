@@ -20,7 +20,7 @@ class FrozenOpenCLIPEmbedder(nn.Module):
         "last",
         "penultimate"
     ]
-    def __init__(self, pretrained, arch="ViT-H-14", device="cpu", max_length=77, #device="cuda" #gpu to cpu
+    def __init__(self, pretrained, arch="ViT-H-14", device="cuda", max_length=77,
                  freeze=True, layer="last"):
         super().__init__()
         assert layer in self.LAYERS
@@ -29,7 +29,6 @@ class FrozenOpenCLIPEmbedder(nn.Module):
         self.model = model
 
         self.device = device
-        #gpu to cpu
         self.max_length = max_length
         if freeze:
             self.freeze()
@@ -84,7 +83,7 @@ class FrozenOpenCLIPVisualEmbedder(nn.Module):
         "last",
         "penultimate"
     ]
-    def __init__(self, pretrained, vit_resolution=(224, 224), arch="ViT-H-14",  device="cpu", max_length=77, #device="cuda" #gpu to cpu
+    def __init__(self, pretrained, vit_resolution=(224, 224), arch="ViT-H-14", device="cuda", max_length=77,
                  freeze=True, layer="last"):
         super().__init__()
         assert layer in self.LAYERS

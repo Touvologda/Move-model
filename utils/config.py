@@ -3,20 +3,15 @@ import yaml
 import json
 import copy
 import argparse
-import streamlit as st
-from streamlit import session_state as ss
 
 import utils.logging as logging
 logger = logging.get_logger(__name__)
 
 class Config(object):
     def __init__(self, load=True, cfg_dict=None, cfg_level=None):
-        
         self._level = "cfg" + ("." + cfg_level if cfg_level is not None else "")
-        
         if load:
-            self.args, un = self._parse_args()
-            
+            self.args = self._parse_args()
             logger.info("Loading config from {}.".format(self.args.cfg_file))
             self.need_initialization = True
             cfg_base = self._load_yaml(self.args) # self._initialize_cfg()
@@ -34,7 +29,7 @@ class Config(object):
             "--cfg",
             dest="cfg_file",
             help="Path to the configuration file",
-            default=ss['path_move'] + 'configs/Animate_X_infer.yaml'
+            default='configs/Animate_X_infer.yaml'
         )
         parser.add_argument(
             "--init_method",
@@ -53,8 +48,7 @@ class Config(object):
             help="other configurations",
             default=None,
             nargs=argparse.REMAINDER)
-        
-        return parser.parse_known_args()
+        return parser.parse_args()
 
     def _path_join(self, path_list):
         path = ""
@@ -146,7 +140,6 @@ class Config(object):
         return cfg_base
 
     def _merge_cfg_from_command_update(self, args, cfg):
-        return cfg
         if len(args.opts) == 0:
             return cfg
         
