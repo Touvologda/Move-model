@@ -1,7 +1,6 @@
 
 rotary-embedding-torch==0.5.3
 simplejson==3.19.2
-numpy==1.26.0
 opencv-python==4.9.0.80
 pytorch_lightning==2.3.0
 lightning_utilities==0.10.0
