@@ -1,4 +1,4 @@
-<h1 align="center"> FastFit: Accelerating Multi-Reference Virtual Try-On via Cacheable Diffusion Models </h1>
+<h1 align="center"> Move model позволяет оживить загруженное изображение </h1>
 
 <p align="center" style="font-size: 18px;">Supported by <a href="https://lavieai.com/">LavieAI</a> and <a href="https://www.loomlyai.com/en">LoomlyAI</a></p>            
 
